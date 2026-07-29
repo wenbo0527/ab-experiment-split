@@ -45,20 +45,26 @@ python ab_split_validator.py
 ### 运行实验套件
 
 ```bash
+# 主算法：5000 用户分 10 组 + 三层验证 + MDE
+python ab_split_validator.py
+
 # 100 次重复抽样稳定性测试
 python monte_carlo_100.py
 
 # 批量 vs 实时分流对比
 python streaming_vs_batch.py
 
-# 实时分流单层优化对比
+# 实时分流单层优化对比（单/两次hash/多salt）
 python realtime_remedy.py
 
-# 实时分流偏差下界扫描
+# 实时分流偏差下界扫描 + 理论推导
 python realtime_breakthrough.py
 
 # 中间校验 + 动态再均衡方案
 python realtime_adaptive.py
+
+# 多层正交实验 + 流量复用验证
+python orthogonal_layers.py
 ```
 
 ## 实验结果汇总
@@ -88,6 +94,27 @@ python realtime_adaptive.py
 2. **实时分流存在 √n 数学下界**（5000 用户下界 8%）
 3. **多映射切换**虽数字达标但破坏一致性，生产不可用
 4. **预分桶 + 静态查表**是工业级标准方案
+
+### 多层正交实验（流量复用）
+
+> 数据来源：`orthogonal_layers.py`（5000 用户 × 50 次抽样）
+
+| 指标 | 实测值 | 判定 |
+|---|---|---|
+| 正交通过率（p > 0.05） | **100%** | ✓ 完美正交 |
+| 卡方 p-value 中位数 | 0.48 | 远大于 0.05 |
+| 列联表最大偏差 | 1.13% | 与组数 2 的泊松波动一致 |
+| 三层 8 组合分布平衡率 | 0.89 | 接近理想 1.0 |
+
+**单层偏差**（实时，每层 2 组）：
+
+| 层 | 平均偏差 | P95 | < 1% 通过率 |
+|---|---|---|---|
+| L1 推荐 | 1.24% | 2.89% | 52% |
+| L2 搜索 | 0.89% | 2.11% | 60% |
+| L3 UI | 1.35% | 2.55% | 34% |
+
+**多层正交的价值**：100% 流量可被 3 个实验同时使用（推荐/搜索/UI 各占一层），层间完全独立。**单层偏差仍是 √n 下界**——多层正交解决流量复用，不解决单层均匀性。
 
 ## 核心算法
 
@@ -138,9 +165,10 @@ group = redis.get(f"exp:{exp_id}:{user_id}")
 | `ab_split_validator.py` | 主算法：蛇形分配 + 三层验证 + MDE |
 | `monte_carlo_100.py` | 100 次重复抽样稳定性测试 |
 | `streaming_vs_batch.py` | 批量 vs 实时分流偏差对比 |
-| `realtime_remedy.py` | 实时分流单层优化方案对比 |
+| `realtime_remedy.py` | 实时分流单层优化方案对比（单hash/两次hash/多salt） |
 | `realtime_breakthrough.py` | 实时分流偏差下界扫描 + 理论推导 |
 | `realtime_adaptive.py` | 中间校验 + 动态再均衡方案 |
+| `orthogonal_layers.py` | 多层正交实验 + 流量复用验证 |
 | `SUMMARY.md` | 完整技术总结文档 |
 
 ## 技术原理
