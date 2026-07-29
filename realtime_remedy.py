@@ -132,7 +132,7 @@ def summarize(name: str, results: List[Dict[str, float]]) -> Dict[str, float]:
 
 def main() -> None:
     print(f"开始执行 {N_TRIALS} 次 × 5 策略对比实验...")
-    print(f"目标: 实时场景下压到 < 1% 偏差\n")
+    print("目标: 实时场景下压到 < 1% 偏差\n")
 
     strategies = [
         ("R0: 单次 hash % 1000 % 10", realtime_r0),
@@ -156,7 +156,7 @@ def main() -> None:
     for i, s in enumerate(ranked, 1):
         bar = "█" * int(s["pass_rate"] * 40)
         marker = " ✓ 达标" if s["pass_rate"] >= 0.95 else " ✗ 不达标"
-        print(f"  {i}. {s['name']:<35} {s['avg_diff']:6.2f}%  {bar} {s['pass_rate']*100:5.1f}%{marker}")
+        print("  {i}. {s['name']:<35} {s['avg_diff']:6.2f}%  {bar} {s['pass_rate']*100:5.1f}%{marker}")
 
 
 if __name__ == "__main__":

@@ -17,13 +17,10 @@
   P4: 完全实时+校准（最灵活，无预分桶）
 """
 
-import json
 import statistics
-import time
 from collections import defaultdict
 from typing import Dict, List, Tuple
 
-import mmh3
 import numpy as np
 
 from ab_split_validator import assign_groups, hash_to_bucket
@@ -407,7 +404,7 @@ def run_realtime_prebucket_experiment() -> None:
         results["P3 分层路由(1000桶)"].append(sim3["max_diff_pct"])
 
     # 输出对比
-    print(f"\n {'方案':<28}{'平均偏差':<12}{'中位偏差':<12}{'P95':<10}{'< 1% 通过率':<14}{'< 5% 通过率'}")
+    print("\n {'方案':<28}{'平均偏差':<12}{'中位偏差':<12}{'P95':<10}{'< 1% 通过率':<14}{'< 5% 通过率'}")
     print("-" * 78)
 
     for name, diffs in results.items():
@@ -428,7 +425,7 @@ def run_realtime_prebucket_experiment() -> None:
 
     print(f"\n 容量: {r1.capacity:,}")
     print(f" 组数: {r1.num_groups}")
-    print(f"\n 前 10 个用户分配:")
+    print("\n 前 10 个用户分配:")
     for i, uid in enumerate(user_ids[:10]):
         gid, is_new = r1.route(uid)
         marker = "新" if is_new else "已"
@@ -445,7 +442,7 @@ def run_realtime_prebucket_experiment() -> None:
     for capacity in [5000, 10000, 50000, 100000]:
         utilization_5k = 5000 / capacity * 100
         print(f" 容量 {capacity:>7,}: 5000 用户使用率 = {utilization_5k:>5.2f}%"
-              f" {'⚠️ 接近上限' if utilization_5k > 80 else '✓ 安全'}")
+              " {'⚠️ 接近上限' if utilization_5k > 80 else '✓ 安全'}")
 
     print("\n" + "=" * 78)
     print(" 方案选型建议")

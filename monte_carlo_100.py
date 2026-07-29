@@ -10,11 +10,9 @@
 """
 
 import statistics
-import sys
 from typing import Dict, List
 
 import numpy as np
-from scipy import stats
 
 from ab_split_validator import (
     NUM_BUCKETS,
@@ -88,11 +86,11 @@ def summarize(results: List[Dict[str, float]]) -> None:
     diff_under_1pct = sum(1 for x in max_diff_pcts if x < 1.0)
 
     print("=" * 78)
-    print(f" 100次重复抽样 Monte Carlo 实验报告 ".center(70))
+    print(" 100次重复抽样 Monte Carlo 实验报告 ".center(70))
     print("=" * 78)
     print(f" 实验配置        : 每次 {NUM_USERS} 用户 / {NUM_BUCKETS} 桶 / {NUM_GROUPS} 组")
     print(f" 抽样次数        : {N_TRIALS}")
-    print(f" 用户ID生成方式  : 每次随机生成（独立抽样）")
+    print(" 用户ID生成方式  : 每次随机生成（独立抽样）")
     print("-" * 78)
 
     # 最大组偏差(%) 分布
@@ -152,8 +150,8 @@ def summarize(results: List[Dict[str, float]]) -> None:
 
     # 前 10 次明细
     print("\n[附录] 前 10 次实验明细")
-    print(f" {'trial':<6}{'max_size':<10}{'min_size':<10}{'max_diff%':<12}"
-          f"{'hash_diff':<12}{'SRM p-value':<14}{'verdict'}")
+    print(" {'trial':<6}{'max_size':<10}{'min_size':<10}{'max_diff%':<12}"
+          "{'hash_diff':<12}{'SRM p-value':<14}{'verdict'}")
     print("-" * 70)
     for r in results[:10]:
         verdict = "PASS" if r["hash_diff"] < 0.01 and r["srm_passed"] else "FAIL"

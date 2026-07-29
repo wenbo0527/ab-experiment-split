@@ -18,14 +18,12 @@
 """
 
 import statistics
-from collections import Counter, defaultdict
-from typing import Dict, List, Tuple
+from collections import Counter
+from typing import Dict, List
 
 import mmh3
 import numpy as np
 from scipy import stats
-
-from ab_split_validator import calc_hash_diff, srm_check
 
 
 # ============================ 多层正交分流器 ============================
@@ -248,10 +246,10 @@ def run_orthogonal_experiment(
     print(" 每组合期望用户数 = 5000 / 8 = 625\n")
 
     balance_ratios = [r["balance_ratio"] for r in all_traffic_results]
-    print(f"   实测组合数  : {all_traffic_results[0]['n_combinations']}/8")
+    print("   实测组合数  : {all_traffic_results[0]['n_combinations']}/8")
     print(f"   最小/最大组合用户数比 : {statistics.mean(balance_ratios):.4f}")
     print(f"   平衡率中位数 : {statistics.median(balance_ratios):.4f}")
-    print(f"   → 越接近 1.0 越均匀（理想正交 = 1.0）")
+    print("   → 越接近 1.0 越均匀（理想正交 = 1.0）")
 
     # 3. 各层偏差
     print("\n[3] 各层最大组偏差 (5000 用户实时分流)")
@@ -273,12 +271,12 @@ def run_orthogonal_experiment(
     }
 
     ortho = check_orthogonality(layer_assignments, "L1_recommend", "L2_search")
-    print(f"\n   L1 (推荐) × L2 (搜索) 列联表:")
-    print(f"   {'':<8}L2=0{'':>10}L2=1{'':>10}合计")
+    print("\n   L1 (推荐) × L2 (搜索) 列联表:")
+    print(f"   {'':<8}{'L2=0':>10}{'L2=1':>10}{'合计':>10}")
     for i, row in enumerate(ortho["contingency"]):
         a_label = f"L1={i}"
-        b0 = int(row[0])
-        b1 = int(row[1])
+        b0 = int(row[0]) if len(row) > 0 else 0
+        b1 = int(row[1]) if len(row) > 1 else 0
         total = int(sum(row))
         print(f"   {a_label:<8}{b0:>10}{b1:>10}{total:>10}")
 
@@ -286,9 +284,9 @@ def run_orthogonal_experiment(
     print(f"   p-value = {ortho['p_value']:.4f}")
     print(f"   自由度 = {ortho['dof']}")
     if ortho["orthogonal_pass"]:
-        print(f"   结论: ✓ 正交通过（两层独立）")
+        print("   结论: ✓ 正交通过（两层独立）")
     else:
-        print(f"   结论: ✗ 正交失败（两层相关）")
+        print("   结论: ✗ 正交失败（两层相关）")
 
     # 5. 实际流量复用示例
     print("\n[5] 三层 8 种组合的实际分布")
@@ -297,9 +295,9 @@ def run_orthogonal_experiment(
         layer_assignments,
         ["L1_recommend", "L2_search", "L3_ui"],
     )
-    print(f"   {'组合 (L1,L2,L3)':<20}{'用户数':<10}{'占比':<10}")
+    print("   {'组合 (L1,L2,L3)':<20}{'用户数':<10}{'占比':<10}")
     for combo, count in traffic["top5_combinations"]:
-        print(f"   {str(combo):<20}{count:<10}{count/traffic['n_users']*100:.2f}%")
+        print("   {str(combo):<20}{count:<10}{count/traffic['n_users']*100:.2f}%")
 
     # 综合结论
     print("\n" + "=" * 78)
@@ -309,8 +307,8 @@ def run_orthogonal_experiment(
     if pass_rate > 0.95:
         print(f" ✓ 多层正交性验证通过（{pass_rate*100:.1f}%）")
         print(f" ✓ 三层正交实现下，单层偏差 {statistics.mean([d for _, d in all_layer_deviations]):.2f}%")
-        print(f" ✓ 流量复用：100% 流量可被 3 个实验同时使用")
-        print(f" → 字节 DataTester 方案在小流量场景下验证可行")
+        print(" ✓ 流量复用：100% 流量可被 3 个实验同时使用")
+        print(" → 字节 DataTester 方案在小流量场景下验证可行")
     else:
         print(f" ✗ 正交性未通过（仅 {pass_rate*100:.1f}%）")
     print("=" * 78)

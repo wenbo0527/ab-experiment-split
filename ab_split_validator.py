@@ -150,6 +150,10 @@ def aa_experiment(
     for _ in range(n_simulations):
         for gid, users in groups.items():
             n = len(users)
+            if n == 0:
+                # 空组：使用 0 作为占位率
+                group_rates[gid].append(0.0)
+                continue
             # 模拟点击率（所有组相同基线）
             rate = rng.binomial(n, baseline_rate) / n
             group_rates[gid].append(rate)
@@ -179,7 +183,7 @@ def calc_mde(
     z_alpha = stats.norm.ppf(1 - alpha / 2)
     z_beta = stats.norm.ppf(power)
     p1 = baseline_rate
-    p2 = baseline_rate  # 假设实验组提升很小，反解 delta
+    # 假设实验组提升很小，反解 delta；p2 实际与 p1 相等，仅用其值计算 sigma_sq
 
     # 整理后求 delta（绝对差）
     # n = (z_a + z_b)^2 * (p1+p2 - (p1^2+p2^2)) / (p2-p1)^2
@@ -206,51 +210,45 @@ def print_report(
     print(f" 桶数           : {NUM_BUCKETS}")
     print(f" 组数           : {NUM_GROUPS}")
     print(f" 盐值 (salt)    : {salt}")
-    print(f" 期望每组人数   : {total / NUM_GROUPS:.2f}")
+    print(" 期望每组人数   : {total / NUM_GROUPS:.2f}")
     print("-" * 70)
     print(" 各组人数明细")
     print("-" * 70)
-    print(f" {'组号':<6}{'人数':<8}{'占比':<10}{'偏差(%)':<12}{'桶数'}")
+    print(" {'组号':<6}{'人数':<8}{'占比':<10}{'偏差(%)':<12}{'桶数'}")
     for i in range(NUM_GROUPS):
         size = len(groups[i])
         pct = size / total * 100
         diff_pct = (size - total / NUM_GROUPS) / (total / NUM_GROUPS) * 100
-        # 统计该组分到了多少桶
-        bucket_count = sum(
-            1 for uid in groups[i]
-            if hash_to_bucket(uid, salt, NUM_BUCKETS) >= 0
-        )
-        print(f" {i:<6}{size:<8}{pct:<10.4f}{diff_pct:<+12.4f}{bucket_count}")
+        print(f" {i:<6}{size:<8}{pct:<10.4f}{diff_pct:<+12.4f}")
     print("-" * 70)
 
     # 第一层验证
     hash_diff = calc_hash_diff(group_sizes)
     hash_diff_pass = hash_diff < HASH_DIFF_THRESHOLD
-    print(f"\n[第一层] Hash_diff 验证")
+    print("\n[第一层] Hash_diff 验证")
     print(f"   Hash_diff = {hash_diff:.6f}  "
           f"阈值 = {HASH_DIFF_THRESHOLD}")
-    print(f"   结果: {'PASS ✓' if hash_diff_pass else 'FAIL ✗'}")
+    print("   结果: {'PASS ✓' if hash_diff_pass else 'FAIL ✗'}")
 
     # 第二层验证
     chi2, p, srm_passed, srm_verdict = srm_check(group_sizes)
-    print(f"\n[第二层] SRM 卡方拟合优度检验")
+    print("\n[第二层] SRM 卡方拟合优度检验")
     print(f"   chi2 = {chi2:.4f},  p-value = {p:.6f}")
     print(f"   结果: {srm_verdict}")
 
     # 第三层验证
     aa_passed, aa_p, aa_f = aa_experiment(groups)
-    print(f"\n[第三层] AA 实验（空跑验证）")
+    print("\n[第三层] AA 实验（空跑验证）")
     print(f"   F-statistic = {aa_f:.4f},  p-value = {aa_p:.4f}")
-    print(f"   结果: {'PASS ✓（组间无显著差异）' if aa_passed else 'FAIL ✗'}")
+    print("   结果: {'PASS ✓（组间无显著差异）' if aa_passed else 'FAIL ✗'}")
 
     # MDE 评估
     mde_abs = calc_mde(group_sizes[0])
-    mde_rel = mde_abs / 0.05 * 100
-    print(f"\n[第四层] 最小可检测效果 (MDE)")
+    print("\n[第四层] 最小可检测效果 (MDE)")
     print(f"   每组样本量: {group_sizes[0]}")
-    print(f"   基线转化率: 5%")
-    print(f"   95% 置信 / 80% 功效下 MDE = {mde_abs:.4f} ({mde_rel:.2f}%)")
-    print(f"   → 小于 {mde_rel:.2f}% 的效果差异无法可靠检出")
+    print("   基线转化率: 5%")
+    print(f"   95% 置信 / 80% 功效下 MDE = {mde_abs:.4f}")
+    print(f"   → 小于 {mde_abs / 0.05 * 100:.2f}% 的效果差异无法可靠检出")
 
     # 综合判定
     all_passed = hash_diff_pass and srm_passed and aa_passed

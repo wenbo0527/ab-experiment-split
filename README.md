@@ -240,22 +240,45 @@ python ab_split_validator.py  # 输出 user_id → group_id 映射
 group = redis.get(f"exp:{exp_id}:{user_id}")
 ```
 
-## 文件清单
+## 文件清单（按主题分类）
 
+### 🎯 核心算法
 | 文件 | 作用 |
 |---|---|
-| `ab_split_validator.py` | 主算法：蛇形分配 + 三层验证 + MDE |
-| `monte_carlo_100.py` | 100 次重复抽样稳定性测试 |
+| `ab_split_validator.py` | **主算法**：蛇形分配 + 三层验证 + MDE |
+
+### 📊 批量 vs 实时对比
+| 文件 | 作用 |
+|---|---|
 | `streaming_vs_batch.py` | 批量 vs 实时分流偏差对比 |
-| `realtime_remedy.py` | 实时分流单层优化方案对比（单hash/两次hash/多salt） |
-| `realtime_breakthrough.py` | 实时分流偏差下界扫描 + 理论推导 |
+
+### ⚡ 实时分流优化
+| 文件 | 作用 |
+|---|---|
+| `realtime_remedy.py` | 单层 hash 优化方案对比（单hash/两次hash/多salt） |
+| `realtime_breakthrough.py` | 偏差下界扫描 + √n 理论推导 |
 | `realtime_adaptive.py` | 中间校验 + 动态再均衡方案 |
+| `realtime_prebucket.py` | 实时场景批量预分桶（用户池预留/动态扩容/分层路由） |
+| `calibration.py` | 运行时偏差校准机制（C1 校准路由） |
+
+### 🔬 理论分析
+| 文件 | 作用 |
+|---|---|
 | `orthogonal_layers.py` | 多层正交实验 + 流量复用验证 |
-| `bucket_count_analysis.py` | 实时分流每桶人数下界分析（√n 推导） |
-| `calibration.py` | 实时分流偏差校准机制对比 |
-| `realtime_prebucket.py` | 实时场景批量预分桶方案（用户池预留/动态扩容/分层路由） |
+| `bucket_count_analysis.py` | 实时分流每桶人数下界分析 |
+
+### 📈 稳定性 & 评估
+| 文件 | 作用 |
+|---|---|
+| `monte_carlo_100.py` | 100 次重复抽样稳定性测试 |
 | `sample_size_table.py` | 评估表生成器（95%置信度样本量需求） |
-| `SUMMARY.md` | 完整技术总结文档 |
+
+### 📚 文档
+| 文件 | 作用 |
+|---|---|
+| `README.md` | 项目主文档（你正在看） |
+| `SUMMARY.md` | 完整技术总结 |
+| `EVALUATION_TABLE.md` | 评估表（自动生成） |
 
 ## 技术原理
 

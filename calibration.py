@@ -28,7 +28,6 @@
 """
 
 import statistics
-from collections import Counter
 from typing import Dict, List
 
 import mmh3
@@ -284,7 +283,7 @@ def run_calibration_experiment() -> None:
         results["C4 混合策略"].append(r4_result["max_diff_pct"])
 
     # 输出结果
-    print(f"\n {'方案':<25}{'平均偏差':<12}{'中位偏差':<12}{'P95':<10}{'< 1% 通过率':<14}{'< 5% 通过率'}")
+    print("\n {'方案':<25}{'平均偏差':<12}{'中位偏差':<12}{'P95':<10}{'< 1% 通过率':<14}{'< 5% 通过率'}")
     print("-" * 78)
 
     for name, diffs in results.items():

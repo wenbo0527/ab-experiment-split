@@ -33,8 +33,8 @@
 """
 
 import statistics
-from collections import Counter, defaultdict, deque
-from typing import Dict, List, Tuple
+from collections import defaultdict
+from typing import Dict, List
 
 import mmh3
 import numpy as np
@@ -211,9 +211,8 @@ class MultiMappingRouter:
         best_idx = self.current_mapping_idx
         best_diff = cur_diff
         for idx in range(len(self.mappings)):
-            sim_counts = defaultdict(int)
-            # 简化：直接假设切换后偏差被均摊
-            est_diff = cur_diff * 0.4  # 经验值
+            # 简化：直接假设切换后偏差被均摊（经验值 0.4 倍）
+            est_diff = cur_diff * 0.4
             if est_diff < best_diff:
                 best_diff = est_diff
                 best_idx = idx
@@ -323,7 +322,7 @@ def summarize(name: str, results: List[Dict[str, float]]) -> Dict[str, float]:
 
 def main() -> None:
     print(f"开始执行 {N_TRIALS} 次 × 3 策略对比实验...")
-    print(f"目标: 引入中间校验 + 动态再均衡，压到 < 1%\n")
+    print("目标: 引入中间校验 + 动态再均衡，压到 < 1%\n")
 
     results_baseline = [run_baseline_trial(i, BASE_SEED + i * 1000) for i in range(N_TRIALS)]
     results_s2 = [run_s2_trial(i, BASE_SEED + i * 1000) for i in range(N_TRIALS)]
@@ -341,7 +340,7 @@ def main() -> None:
     for i, s in enumerate(ranked, 1):
         bar = "█" * int(s["pass_rate"] * 40)
         marker = " ✓ 达标" if s["pass_rate"] >= 0.95 else " ✗ 不达标"
-        print(f"  {i}. {s['name']:<35} {s['avg_diff']:6.2f}%  {bar} {s['pass_rate']*100:5.1f}%{marker}")
+        print("  {i}. {s['name']:<35} {s['avg_diff']:6.2f}%  {bar} {s['pass_rate']*100:5.1f}%{marker}")
 
     print("\n" + "=" * 70)
     print(" 结论")

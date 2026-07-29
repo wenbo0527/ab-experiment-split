@@ -16,7 +16,7 @@ AB 实验分流方案评估表生成器
 
 import math
 import statistics
-from typing import Dict, List
+from typing import List
 
 import mmh3
 import numpy as np
@@ -210,9 +210,8 @@ def _realtime_two_stage_hash(user_ids: List[str], trial: int) -> List[int]:
     """
     sizes = [0] * 10
     for uid in user_ids:
-        # 第一次 hash：用户 → 桶
-        h1 = mmh3.hash(f"{uid}_exp_{trial}", signed=False)
-        bucket = h1 % 1000
+        # 第一次 hash：用户 → 桶（仅用于防御性分散，不参与组决策）
+        mmh3.hash(f"{uid}_exp_{trial}", signed=False)
         # 第二次 hash：用户 → 组（独立 hash，与桶映射无关）
         h2 = mmh3.hash(f"{uid}_exp_{trial}_v2", signed=False)
         group = h2 % 10
@@ -307,7 +306,7 @@ def generate_evaluation_table() -> str:
     for name, n_users, stats in batch_results:
         verdict = "✓ 达标" if stats["avg_diff"] < 1.0 else "✗ 不达标"
         output.append(
-            f"| {name} | {n_users:,} | 10 | {stats['avg_diff']:.2f}% | {stats['pass_rate']*100:.0f}% | {verdict} |"
+            "| {name} | {n_users:,} | 10 | {stats['avg_diff']:.2f}% | {stats['pass_rate']*100:.0f}% | {verdict} |"
         )
 
     # 表 4: 实时方案实测数据（100 次重复抽样）
@@ -321,7 +320,7 @@ def generate_evaluation_table() -> str:
         if stats["avg_diff"] >= 5.0:
             verdict = "✗ 不达标"
         output.append(
-            f"| {name} | {n_users:,} | 10 | {stats['avg_diff']:.2f}% | {stats['pass_rate']*100:.0f}% | {verdict} |"
+            "| {name} | {n_users:,} | 10 | {stats['avg_diff']:.2f}% | {stats['pass_rate']*100:.0f}% | {verdict} |"
         )
 
     # 工程选型建议
@@ -391,7 +390,7 @@ def generate_evaluation_table() -> str:
     output.append("=" * 80)
     output.append("")
     output.append(" 实时分流 95% 置信下：")
-    output.append(f"   {'，'.join(summary_parts)}")
+    output.append("   {'，'.join(summary_parts)}")
     output.append("")
     output.append(" 但批量预分桶（蛇形分配）不受此限制：")
     output.append("   5000 用户 / 10 组即可达到 0.51% 偏差（96% < 1% 通过率）")

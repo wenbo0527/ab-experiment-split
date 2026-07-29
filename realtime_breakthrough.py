@@ -19,7 +19,7 @@ from typing import Dict, List
 import mmh3
 import numpy as np
 
-from ab_split_validator import NUM_USERS, calc_hash_diff, srm_check
+from ab_split_validator import NUM_USERS, srm_check
 
 
 N_TRIALS = 50  # 用户量扫描，每个量级跑 50 次
@@ -63,8 +63,8 @@ def scan_sample_sizes() -> None:
     print(" 实时分流偏差 vs 样本量 扫描实验".center(70))
     print("=" * 78)
     print(f" 配置: 单层 hash%1000%10，10 组，{N_TRIALS} 次抽样")
-    print(f"\n {'样本量':<10}{'期望/组':<10}{'偏差均值':<10}{'偏差P95':<10}"
-          f"{'< 1% 通过率':<14}{'< 5% 通过率':<14}{'结论'}")
+    print("\n {'样本量':<10}{'期望/组':<10}{'偏差均值':<10}{'偏差P95':<10}"
+          "{'< 1% 通过率':<14}{'< 5% 通过率':<14}{'结论'}")
 
     for n in [500, 1000, 2000, 5000, 10000, 20000, 50000, 100000]:
         diffs = []
@@ -90,8 +90,8 @@ def scan_layer_count() -> None:
     print(" 多层正交聚合 vs 单层实时 偏差对比".center(70))
     print("=" * 78)
     print(f" 配置: 5000 用户 / 10 组，{N_TRIALS} 次抽样")
-    print(f"\n {'层数':<8}{'方案':<25}{'偏差均值':<10}{'偏差P95':<10}"
-          f"{'< 1% 通过率':<14}{'SRM通过率'}")
+    print("\n {'层数':<8}{'方案':<25}{'偏差均值':<10}{'偏差P95':<10}"
+          "{'< 1% 通过率':<14}{'SRM通过率'}")
 
     for n_layers in [1, 2, 3, 5, 8, 10]:
         diffs = []
@@ -108,7 +108,7 @@ def scan_layer_count() -> None:
 
         under_1 = sum(1 for x in diffs if x < 1.0) / N_TRIALS
         verdict = "✓" if under_1 >= 0.95 else "✗"
-        print(f" {n_layers:<8}{'多层正交投票':<25}{statistics.mean(diffs):<10.2f}"
+        print(" {n_layers:<8}{'多层正交投票':<25}{statistics.mean(diffs):<10.2f}"
               f"{np.percentile(diffs, 95):<10.2f}"
               f"{under_1*100:<14.1f}{srm_pass/N_TRIALS*100:.1f}% {verdict}")
 

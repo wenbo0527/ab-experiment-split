@@ -160,8 +160,8 @@ def summarize(results: List[Dict[str, float]]) -> None:
 
     # 越界统计
     print("\n[边界分析] 1% 阈值越界情况")
-    print(f"   策略A 越界次数 : {n - a_under_1} 次")
-    print(f"   策略B 越界次数 : {n - b_under_1} 次")
+    print("   策略A 越界次数 : {n - a_under_1} 次")
+    print("   策略B 越界次数 : {n - b_under_1} 次")
 
     # 实时场景的可补救措施
     print("\n[实时场景补救方案]")
@@ -171,19 +171,19 @@ def summarize(results: List[Dict[str, float]]) -> None:
 
     print("\n" + "=" * 78)
     print(" 综合结论:")
-    print(f"   批量策略: 偏差 {statistics.mean(a_diff):.2f}%，{'达标' if statistics.mean(a_diff) < 1 else '不达标'}")
-    print(f"   实时策略: 偏差 {statistics.mean(b_diff):.2f}%，{'达标' if statistics.mean(b_diff) < 1 else '不达标'}")
+    print("   批量策略: 偏差 {statistics.mean(a_diff):.2f}%，{'达标' if statistics.mean(a_diff) < 1 else '不达标'}")
+    print("   实时策略: 偏差 {statistics.mean(b_diff):.2f}%，{'达标' if statistics.mean(b_diff) < 1 else '不达标'}")
     print("=" * 78)
 
     # 前 5 次明细
     print("\n[附录] 前 5 次对比明细")
-    print(f" {'trial':<6}{'A_max%':<10}{'A_hash':<10}{'A_SRM':<12}"
-          f"{'B_max%':<10}{'B_hash':<10}{'B_SRM'}")
+    print(" {'trial':<6}{'A_max%':<10}{'A_hash':<10}{'A_SRM':<12}"
+          "{'B_max%':<10}{'B_hash':<10}{'B_SRM'}")
     print("-" * 70)
     for r in results[:5]:
-        print(f" {r['trial']:<6}{r['a_max_diff_pct']:<10.4f}{r['a_hash_diff']:<10.6f}"
-              f"{r['a_srm_p']:<12.4f}{r['b_max_diff_pct']:<10.4f}"
-              f"{r['b_hash_diff']:<10.6f}{r['b_srm_p']:.4f}")
+        print(" {r['trial']:<6}{r['a_max_diff_pct']:<10.4f}{r['a_hash_diff']:<10.6f}"
+              "{r['a_srm_p']:<12.4f}{r['b_max_diff_pct']:<10.4f}"
+              "{r['b_hash_diff']:<10.6f}{r['b_srm_p']:.4f}")
 
 
 def main() -> None:
