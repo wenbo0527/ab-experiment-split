@@ -139,6 +139,7 @@ def measure_realtime_strategies(n_trials: int = 100) -> List:
     strategies = [
         ("纯哈希", _realtime_pure_hash),
         ("两次 hash 异或", _realtime_double_hash),
+        ("客户号 2 次哈希（字节风格）", _realtime_two_stage_hash),
         ("4-salt 众数投票", _realtime_salt_vote),
         ("校准路由 (C1)", _realtime_calibrated),
     ]
@@ -192,6 +193,30 @@ def _realtime_salt_vote(user_ids: List[str], trial: int) -> List[int]:
         votes = [mmh3.hash(f"{uid}_{s}", signed=False) % 10 for s in salts]
         gid = Counter(votes).most_common(1)[0][0]
         sizes[gid] += 1
+    return sizes
+
+
+def _realtime_two_stage_hash(user_ids: List[str], trial: int) -> List[int]:
+    """
+    客户号 2 次哈希（字节 DataTester 实际风格）
+
+    第一次 hash：用户 → 桶（仍按单次 hash，但用相同 salt）
+    第二次 hash：在桶-组映射层叠加扰动（不同 salt）
+
+    实际字节 DataTester 的做法（参考火山引擎技术博客）：
+      - 分组过程中做两次独立哈希
+      - 第一次分配用户到桶
+      - 第二次在分组时再次哈希，降低单次哈希的系统性偏差
+    """
+    sizes = [0] * 10
+    for uid in user_ids:
+        # 第一次 hash：用户 → 桶
+        h1 = mmh3.hash(f"{uid}_exp_{trial}", signed=False)
+        bucket = h1 % 1000
+        # 第二次 hash：用户 → 组（独立 hash，与桶映射无关）
+        h2 = mmh3.hash(f"{uid}_exp_{trial}_v2", signed=False)
+        group = h2 % 10
+        sizes[group] += 1
     return sizes
 
 
