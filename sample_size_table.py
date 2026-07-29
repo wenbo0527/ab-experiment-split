@@ -18,7 +18,10 @@ import math
 import statistics
 from typing import Dict, List
 
+import mmh3
 import numpy as np
+
+from ab_split_validator import assign_groups
 
 
 # ============================ 核心公式 ============================
@@ -74,6 +77,143 @@ def summarize_batch_vs_realtime() -> str:
   批量：能在小流量下精确控制偏差（蛇形算法）
   实时：只能靠大流量"自然收敛"（√n 法则）
 """
+
+
+# ============================ 100 次重复抽样实测 ============================
+
+def measure_batch_strategies(n_trials: int = 100) -> List:
+    """
+    批量预分桶方案：100 次重复抽样实测
+
+    每次重新生成随机用户 ID，跑蛇形分配，记录偏差分布。
+    """
+    strategies = [
+        ("批量蛇形分配", 5_000),
+        ("批量蛇形分配", 10_000),
+        ("批量蛇形分配", 100_000),
+        ("用户池预留 (P1)", 5_000),
+        ("动态扩容 (P2)", 5_000),
+    ]
+
+    results = []
+    for name, n_users in strategies:
+        diffs = []
+        for trial in range(n_trials):
+            rng = np.random.default_rng(20260728 + trial * 1000)
+            user_ids = [f"u_{rng.integers(0, 10**9):09d}" for _ in range(n_users)]
+
+            if "P1" in name or "P2" in name:
+                # 用户池/动态扩容：按组均衡消耗
+                from realtime_prebucket import UserPoolPreBucket
+                router = UserPoolPreBucket(capacity=max(50_000, n_users * 5), num_groups=10)
+                sizes = [0] * 10
+                for uid in user_ids:
+                    gid, _ = router.route(uid)
+                    if gid >= 0:
+                        sizes[gid] += 1
+            else:
+                # 批量蛇形
+                groups = assign_groups(user_ids, num_buckets=1000, num_groups=10, salt=f"exp_{trial}")
+                sizes = [len(groups[g]) for g in range(10)]
+
+            expected = n_users / 10
+            max_diff = max(abs(s - expected) for s in sizes) / expected * 100
+            diffs.append(max_diff)
+
+        avg_diff = statistics.mean(diffs)
+        pass_rate = sum(1 for d in diffs if d < 1.0) / len(diffs)
+
+        results.append((name, n_users, {
+            "avg_diff": avg_diff,
+            "pass_rate": pass_rate,
+            "n_trials": n_trials,
+        }))
+
+    return results
+
+
+def measure_realtime_strategies(n_trials: int = 100) -> List:
+    """
+    实时分流方案：100 次重复抽样实测
+    """
+    strategies = [
+        ("纯哈希", _realtime_pure_hash),
+        ("两次 hash 异或", _realtime_double_hash),
+        ("4-salt 众数投票", _realtime_salt_vote),
+        ("校准路由 (C1)", _realtime_calibrated),
+    ]
+
+    results = []
+    for name, fn in strategies:
+        diffs = []
+        for trial in range(n_trials):
+            rng = np.random.default_rng(20260728 + trial * 1000)
+            user_ids = [f"u_{rng.integers(0, 10**9):09d}" for _ in range(5_000)]
+            sizes = fn(user_ids, trial)
+            expected = 5_000 / 10
+            max_diff = max(abs(s - expected) for s in sizes) / expected * 100
+            diffs.append(max_diff)
+
+        avg_diff = statistics.mean(diffs)
+        pass_rate = sum(1 for d in diffs if d < 1.0) / len(diffs)
+
+        results.append((name, 5_000, {
+            "avg_diff": avg_diff,
+            "pass_rate": pass_rate,
+            "n_trials": n_trials,
+        }))
+
+    return results
+
+
+def _realtime_pure_hash(user_ids: List[str], trial: int) -> List[int]:
+    sizes = [0] * 10
+    for uid in user_ids:
+        bucket = mmh3.hash(f"{uid}_exp_{trial}", signed=False) % 1000
+        sizes[bucket % 10] += 1
+    return sizes
+
+
+def _realtime_double_hash(user_ids: List[str], trial: int) -> List[int]:
+    sizes = [0] * 10
+    for uid in user_ids:
+        h1 = mmh3.hash(f"{uid}_exp_{trial}_v1", signed=False)
+        h2 = mmh3.hash(f"{uid}_exp_{trial}_v2", signed=False)
+        bucket = (h1 ^ h2) % 1000
+        sizes[bucket % 10] += 1
+    return sizes
+
+
+def _realtime_salt_vote(user_ids: List[str], trial: int) -> List[int]:
+    sizes = [0] * 10
+    salts = [f"exp_{trial}_s{i}" for i in range(4)]
+    for uid in user_ids:
+        from collections import Counter
+        votes = [mmh3.hash(f"{uid}_{s}", signed=False) % 10 for s in salts]
+        gid = Counter(votes).most_common(1)[0][0]
+        sizes[gid] += 1
+    return sizes
+
+
+def _realtime_calibrated(user_ids: List[str], trial: int) -> List[int]:
+    """校准路由 C1：实时贪心均衡"""
+    sizes = [0] * 10
+    user_assignments = {}  # 一致性：同用户同组
+    for uid in user_ids:
+        # 已有分配则直接用
+        if uid in user_assignments:
+            sizes[user_assignments[uid]] += 1
+            continue
+        # 基础哈希
+        base = mmh3.hash(f"{uid}_exp_{trial}", signed=False) % 1000 % 10
+        # 校准：倾向分到人少的组（贪心均衡）
+        min_group = sizes.index(min(sizes))
+        # 概率选择：70% 走校准，30% 走基础
+        import random
+        gid = min_group if random.random() < 0.7 else base
+        user_assignments[uid] = gid
+        sizes[gid] += 1
+    return sizes
 
 
 # ============================ 评估表生成 ============================
@@ -133,28 +273,31 @@ def generate_evaluation_table() -> str:
             row.append(f"{actual_bias:.2f}% {achievable}")
         output.append("| " + " | ".join(row) + " |")
 
-    # 表 3: 批量方案实测数据（来自已有实验）
-    output.append("\n\n## 四、批量预分桶方案实测偏差（无 √n 限制）")
+    # 表 3: 批量方案实测数据（100 次重复抽样）
+    output.append("\n\n## 四、批量预分桶方案实测偏差（无 √n 限制，100 次重复抽样）")
     output.append("")
     output.append("| 方案 | 用户量 | 组数 | 平均偏差 | < 1% 通过率 | 95% 置信要求 |")
     output.append("|---|---|---|---|---|---|")
-    output.append("| 批量蛇形分配 | 5,000 | 10 | 0.51% | 96% | ✓ 达标 |")
-    output.append("| 批量蛇形分配 | 10,000 | 10 | 0.36% | 100% | ✓ 达标 |")
-    output.append("| 批量蛇形分配 | 100,000 | 10 | 0.11% | 100% | ✓ 达标 |")
-    output.append("| 用户池预留 (P1) | 5,000 | 10 | 0.00% | 100% | ✓ 达标 |")
-    output.append("| 动态扩容 (P2) | 5,000 | 10 | 0.00% | 100% | ✓ 达标 |")
+    batch_results = measure_batch_strategies(n_trials=100)
+    for name, n_users, stats in batch_results:
+        verdict = "✓ 达标" if stats["avg_diff"] < 1.0 else "✗ 不达标"
+        output.append(
+            f"| {name} | {n_users:,} | 10 | {stats['avg_diff']:.2f}% | {stats['pass_rate']*100:.0f}% | {verdict} |"
+        )
 
-    # 表 4: 实时方案实测数据
-    output.append("\n\n## 五、实时分流方案实测偏差（受 √n 限制）")
+    # 表 4: 实时方案实测数据（100 次重复抽样）
+    output.append("\n\n## 五、实时分流方案实测偏差（受 √n 限制，100 次重复抽样）")
     output.append("")
     output.append("| 方案 | 用户量 | 组数 | 平均偏差 | < 1% 通过率 | 95% 置信要求 |")
     output.append("|---|---|---|---|---|---|")
-    output.append("| 纯哈希 | 5,000 | 10 | 8.05% | 0% | ✗ 不达标 |")
-    output.append("| 两次 hash 异或 | 5,000 | 10 | 7.82% | 0% | ✗ 不达标 |")
-    output.append("| 4-salt 众数投票 | 5,000 | 10 | 7.98% | 0% | ✗ 不达标 |")
-    output.append("| 桶级微调 (S2) | 5,000 | 10 | 5.99% | 0% | ✗ 不达标 |")
-    output.append("| 校准路由 (C1) | 5,000 | 10 | 1.94% | 10% | △ 边缘 |")
-    output.append("| 多映射切换 (S3) | 5,000 | 10 | 0.51% | 98% | ✓ 但破坏一致性 |")
+    realtime_results = measure_realtime_strategies(n_trials=100)
+    for name, n_users, stats in realtime_results:
+        verdict = "✓ 达标" if stats["avg_diff"] < 1.0 else "△ 边缘"
+        if stats["avg_diff"] >= 5.0:
+            verdict = "✗ 不达标"
+        output.append(
+            f"| {name} | {n_users:,} | 10 | {stats['avg_diff']:.2f}% | {stats['pass_rate']*100:.0f}% | {verdict} |"
+        )
 
     # 工程选型建议
     output.append("\n\n## 六、工程选型决策树")
