@@ -74,6 +74,9 @@ python calibration.py
 
 # 实时场景批量预分桶方案（用户池预留/动态扩容/分层路由）
 python realtime_prebucket.py
+
+# 生成评估表（95%置信度下样本量需求）
+python sample_size_table.py
 ```
 
 ## 实验结果汇总
@@ -251,6 +254,7 @@ group = redis.get(f"exp:{exp_id}:{user_id}")
 | `bucket_count_analysis.py` | 实时分流每桶人数下界分析（√n 推导） |
 | `calibration.py` | 实时分流偏差校准机制对比 |
 | `realtime_prebucket.py` | 实时场景批量预分桶方案（用户池预留/动态扩容/分层路由） |
+| `sample_size_table.py` | 评估表生成器（95%置信度样本量需求） |
 | `SUMMARY.md` | 完整技术总结文档 |
 
 ## 技术原理
