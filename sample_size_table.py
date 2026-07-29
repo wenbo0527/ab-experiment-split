@@ -36,6 +36,16 @@ def min_sample_size(target_bias_pct: float, num_groups: int, z: float = 1.96) ->
     return int(math.ceil(total_n))
 
 
+def min_users_per_group(target_bias_pct: float, z: float = 1.96) -> int:
+    """
+    计算满足 95% 置信度的每组最少人数（与组数无关）
+
+    公式：N/G = (z / bias)^2
+    """
+    bias = target_bias_pct / 100
+    return int(math.ceil((z / bias) ** 2))
+
+
 def theoretical_bias(n_users: int, num_groups: int, z: float = 1.96) -> float:
     """反算偏差（95% 置信度）"""
     n_per_group = n_users / num_groups
@@ -196,17 +206,24 @@ def generate_evaluation_table() -> str:
     output.append("| 目标偏差 | 每组最少人数 (N/G) | 10 组总人数 | 100 组总人数 |")
     output.append("|---|---|---|---|")
     for bias in [0.5, 1.0, 2.0, 5.0]:
-        n_per_g = min_sample_size(bias, 1)  # G=1 时算出 N/G
+        n_per_g = min_users_per_group(bias)  # 直接算每组人数
         n_10 = min_sample_size(bias, 10)
         n_100 = min_sample_size(bias, 100)
         output.append(f"| {bias}% | {n_per_g:,} | {n_10:,} | {n_100:,} |")
+
+    # 动态生成"一句话总结"（基于公式推导，避免硬编码）
+    bias_thresholds = [0.5, 1.0, 2.0, 5.0]
+    summary_parts = []
+    for bias in bias_thresholds:
+        n_per_group = min_users_per_group(bias)
+        summary_parts.append(f"{bias}% 偏差需每组 {n_per_group:,} 人")
 
     output.append("\n" + "=" * 80)
     output.append(" 一句话总结".center(70))
     output.append("=" * 80)
     output.append("")
     output.append(" 实时分流 95% 置信下：")
-    output.append("   0.5% 偏差需每组 15,367 人，1% 偏差需 3,842 人，2% 偏差需 961 人，5% 偏差需 154 人")
+    output.append(f"   {'，'.join(summary_parts)}")
     output.append("")
     output.append(" 但批量预分桶（蛇形分配）不受此限制：")
     output.append("   5000 用户 / 10 组即可达到 0.51% 偏差（96% < 1% 通过率）")
