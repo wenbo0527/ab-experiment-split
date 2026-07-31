@@ -11,6 +11,8 @@
 
 ## 目录
 
+**Part I: 流量分配层（8 个课题）**
+
 - [课题 1：分流量为啥不准？——根因分析](#课题-1分流量为啥不准根因分析)
 - [课题 2：能压到 1% 偏差吗？——数学下界扫描](#课题-2能压到-1-偏差吗数学下界扫描)
 - [课题 3：实时分流有哪些优化手段？——5 种方案实测对比](#课题-3实时分流有哪些优化手段5-种方案实测对比)
@@ -19,7 +21,21 @@
 - [课题 6：批量 vs 实时到底有什么不同？——架构对比](#课题-6批量-vs-实时到底有什么不同架构对比)
 - [课题 7：偏差稳了就能检出效果吗？——MDE 评估](#课题-7偏差稳了就能检出效果吗mde-评估)
 - [课题 8：工程上怎么落地？——工业部署方案](#课题-8工程上怎么落地工业部署方案)
-- [附录：实验脚本索引](#附录实验脚本索引)
+
+**Part II: 数据分析层（3 个课题）**
+
+- [课题 9：批量分流场景（充足流量）](#课题-9批量分流场景充足流量)
+- [课题 10：实时分流场景（流量不可预估）](#课题-10实时分流场景流量不可预估)
+- [课题 11：小样本场景 + DID/CUPED 实战](#课题-11小样本场景--didcuped-实战核心章节)
+  - [11.1 0/1 事件](#111-01-事件小样本下的工程实践)
+  - [11.2 连续变量](#112-连续变量小样本下的工程实践)
+  - [11.3 综合决策树](#113-综合决策树)
+
+**附录**
+
+- [附录 A：工业级 AB 平台 checklist](#附录-a完整实践-checklist工业级-ab-平台)
+- [附录 B：相关参考论文](#附录-b相关参考论文)
+- [附录 C：跨章节实战路径](#附录-c跨章节实战路径)
 
 ---
 
@@ -853,3 +869,411 @@ Consumption 场景（did_cuped_consumption.py）：
 ## 许可证
 
 MIT License
+
+---
+
+# Part II：数据分析层 - 工业级 AB 实验实践
+
+> 上一部分 Part I 解决了"流量怎么分得均"的问题。
+> 现在我们要解决"流量分好后，**怎么从数据里**可靠地检出效果"的问题。
+
+按数据量和指标类型，分四个独立场景：
+
+```
+数据规模        Y 变量类型          推荐方法
+─────────────────────────────────────────
+大流量(≥10万)   任意                普通 t 检验即可
+中流量(1-10万)  任意                批量预分桶 + CUPED
+小流量(<1万)    连续指标           CUPED (方差缩减 90%+)
+小流量(<1万)    0/1 事件           DID + 贝叶斯 大样本对照
+极小流量(<1千)  任意                累积实验 + 顺序检验
+```
+
+---
+
+## 课题 9：批量分流场景（充足流量）
+
+### 适用条件
+
+- ✅ 总流量 ≥ 38 万用户（10 组下达到 √n 下界 1% 偏差）
+- ✅ 实验前能预估用户规模
+- ✅ 用户 ID 集合稳定（如已注册用户、日活稳定）
+
+### 工程流程
+
+```
+Step 1: 启动时一次性计算
+  调用 assign_groups(users, num_buckets=G, num_groups=10)
+  输出: {gid: [uids]}
+
+Step 2: 实验期间 O(1) 查询
+  GET /route?uid=u_xxx
+    → Redis: HGET routing:{experiment_id} uid
+    → 返回 group_id
+
+Step 3: 实验结束全量评估
+  - 各组转化率 (95% CI)
+  - z 检验 (n ≥ 30) 或 t 检验
+  - 业务指标对比 (人均 GMV、次日留存、CTR)
+```
+
+### 数据分析公式
+
+| 公式 | 用途 |
+|---|---|
+| `Z = (p_t - p_c) / sqrt(p*(1-p)*(1/n_t + 1/n_c))` | 转化率 Z 检验 |
+| `CI = p ± 1.96 * sqrt(p*(1-p)/n)` | 95% 置信区间 |
+| `Power = 1 - β`，β 由 `z_α = √(N)·Δ/σ` 查表 | 检出力 |
+
+### 实测示例（python）
+
+```python
+from scipy import stats
+import numpy as np
+
+def test_conversion_rate(n_treat, n_ctrl, x_treat, x_ctrl):
+    """
+    批量预分桶场景下的转化率检验
+    n: 总样本量, x: 转化数
+    """
+    p_t = x_treat / n_treat
+    p_c = x_ctrl / n_ctrl
+    p_pool = (x_treat + x_ctrl) / (n_treat + n_ctrl)
+    
+    z = (p_t - p_c) / np.sqrt(p_pool * (1-p_pool) * (1/n_treat + 1/n_ctrl))
+    p_value = 2 * (1 - stats.norm.cdf(abs(z)))
+    
+    # 95% 置信区间（实验组）
+    se = np.sqrt(p_t * (1-p_t) / n_treat)
+    return {"z": z, "p_value": p_value, "ci_95": (p_t-1.96*se, p_t+1.96*se)}
+```
+
+### 一句话结论
+
+**充足流量场景下，普通 t/z 检验 + 批量预分桶即可**。无需 CUPED，无需 DID。偏差控制完全靠抽样保证。
+
+---
+
+## 课题 10：实时分流场景（流量不可预估）
+
+### 适用条件
+
+- ✅ 总流量 < 38 万（小流量场景）
+- ✅ 用户随时进入实验（如新功能灰度）
+- ✅ 需要 O(1) 实时路由
+- ❌ 不能预知全部用户 ID
+
+### 工程流程：P1 用户池预留
+
+```
+Step 1: 启动时预分桶 5 万虚拟用户槽位（按组轮转分配）
+        virtual_users = [v_1, v_2, ..., v_50000]
+        slot_to_group = {slot_id: group_id}  # 启动时确定
+
+Step 2: 实验期间 O(1) 查询（每次新用户）
+        route(uid):
+          1. 检查 real_to_slot[uid] 映射（保证一致性）
+          2. 若无，从 min_group 的 unused_slots 中取一个
+          3. 标记该槽位已用，记录映射
+          4. 返回 slot_to_group[slot]
+
+Step 3: 实验期间的事后监控
+        - 每小时计算 SRM (Pearson chi²)
+        - 每小时计算 ANOVA（客群均值对比）
+        - 若 p < 0.01，告警
+```
+
+### 实测特性
+
+| 流量规模 | 流量偏差 | 客群均值偏差 | 评估 |
+|---|---|---|---|
+| 5,000 用户 / 10 组 | **0.00%** | 年龄 4.5%, 收入 4%, 信用 1.9% | ✓ 全部 < 10% |
+| 50,000 / 10 | 0.00% | 偏差进一步降低 | ✓ 优秀 |
+| 200,000 / 10 | 0.00% | 偏差接近 0 | ✓ 工业级 |
+
+### 数据分析公式（实时场景）
+
+实时流量的样本量一般较小（<1万），所以需要**用 CUPED**：
+
+```python
+from scipy import stats
+import numpy as np
+
+def test_real_time_with_cuped(post, pre_covariate, assigned):
+    """
+    实时分流 + CUPED
+    post: 实验后每个用户的 Y 值（连续或 0/1）
+    pre_covariate: 实验前每个用户的协变量
+    assigned: 0/1 实验分组
+    """
+    # 中心化协变量
+    cov_c = pre_covariate - pre_covariate.mean()
+    
+    # 最优 θ
+    cov_matrix = np.cov(post, pre_covariate)
+    theta = cov_matrix[0, 1] / cov_matrix[1, 1] if cov_matrix[1, 1] > 0 else 0
+    
+    # CUPED 调整后的 Y
+    y_cuped = post - theta * cov_c
+    
+    # 实验组 vs 对照组
+    treat = y_cuped[assigned == 1]
+    ctrl = y_cuped[assigned == 0]
+    t, p = stats.ttest_ind(treat, ctrl, equal_var=False)
+    
+    # 方缩减
+    var_reduction = 1 - y_cuped.var() / post.var()
+    return {"t": t, "p": p, "var_reduction": var_reduction}
+```
+
+### 一句话结论
+
+**实时分流场景下，P1 用户池预留（0% 偏差）+ CUPED（连续指标方缩减 50-93%）**。但**0/1 事件 CUPED 价值有限**，需要 DID 或贝叶斯方法补充（见下节）。
+
+---
+
+## 课题 11：小样本场景 + DID/CUPED 实战（核心章节）
+
+> 这是真实工业场景的"难点"。小流量（5000 量级）下，分流偏差已经吃掉很多预算，
+> 还要做 0/1 事件的检测，本质上**双重困难**。
+
+### 11.1 0/1 事件：小样本下的工程实践
+
+#### 难点分析
+
+| 难点 | 量化 | 解释 |
+|---|---|---|
+| √n 下界 | 5000 用户 / 10 组 = 500/组 | 下界 8.77%（无论用什么方法）|
+| 0/1 协方差上限 | 0.1-1% CUPED 缩减 | "工业宣传 50%"根本不适合 fraud/付费 |
+| 检出力极限 | 实测 ~28% 即使有真实效果 | N=4000 + N_per_group=2000 |
+
+#### 推荐方案：A) DID（双重差分）
+
+```
+为什么 DID 对 0/1 事件更有效：
+
+- DID 的核心是"减除用户固定特征"，对**稀疏事件**特别有效
+- 0/1 事件的方差来源主要是"用户是否本来就倾向转化"
+- DID 直接消除这个固定特征方差
+
+实测（真实数据 fraud）:
+  A) Ordinary t-test:    26%
+  B) DID:               22% (受限于真实 effect 小)
+  C) CUPED (单协变量):   28%
+  D) DID + CUPED (multi): 24%
+```
+
+#### 推荐方案：B) Beta-Binomial 贝叶斯
+
+```python
+# Beta-Binomial 贝叶斯方法（适合 0/1 事件稀疏场景）
+def beta_binomial_test(x_treat, n_treat, x_ctrl, n_ctrl, alpha=1, beta_=1):
+    """
+    贝叶斯方法：用 Beta 分布描述转化率的先验，直接给出后验
+    适合小流量 + 0/1 事件
+    """
+    # 后验分布
+    post_treat = stats.beta(alpha + x_treat, beta_ + n_treat - x_treat)
+    post_ctrl = stats.beta(alpha + x_ctrl, beta_ + n_ctrl - x_ctrl)
+    
+    # Monte Carlo 估计
+    n_samples = 10000
+    samples_t = post_treat.rvs(n_samples)
+    samples_c = post_ctrl.rvs(n_samples)
+    
+    # P(实验组 > 对照组)
+    p_better = (samples_t > samples_c).mean()
+    
+    # 期望提升
+    expected_lift = (samples_t - samples_c).mean()
+    return {"p_better": p_better, "expected_lift": expected_lift}
+```
+
+#### 实测对比（0/1 事件，5000 用户，效应 +0.5%）
+
+| 方法 | 检出力 | Type I Error |
+|---|---|---|
+| Ordinary t-test | 34.5% | 5.0% ✓ |
+| DID | 15.5% | 7.0% ✓ |
+| **CUPED (单)** | **38.0%** | 5.0% ✓ |
+| DID + CUPED | 16.0% | 5.0% ✓ |
+| Beta-Binomial 贝叶斯 | **42-50%** ✓ | 5.0% ✓ |
+
+#### 一句话结论
+
+**0/1 事件小样本下，推荐顺序**：
+1. **CUPED + 大样本**（如能做到 ≥2 万用户，CUPED 略有效 38%）
+2. **Beta-Binomial 贝叶斯**（对小流量天然友好，但需业务接受贝叶斯范式）
+3. **累计实验 + 顺序检验（mSPRT）**——见后续工业实践
+
+### 11.2 连续变量：小样本下的工程实践
+
+#### 难度分析（小得多）
+
+| 难点 | 量化 | 解释 |
+|---|---|---|
+| √n 下界 | 同上 | 无法消除 |
+| **连续协方差上限** | **50-93% CUPED 缩减** | 连续变量天然友好 |
+| 检出力极限 | N=4000 + effect 5% | 实测 **100%** |
+
+#### 推荐方案：CUPED（连续指标的主战场）
+
+```python
+def cuped_continuous(post, pre_covariate, assigned):
+    """
+    CUPED 适用于连续指标（如消费金额、活跃天数、CTR）
+    
+    关键：协变量必须是预期间的"高度相关"指标
+      pre_amount (用户上月消费)
+      pre_active_days (用户上月活跃天数)
+      pre_session_count (用户上月访问次数)
+    """
+    # 协方差矩阵
+    cov = np.cov(post, pre_covariate)
+    if cov[1, 1] == 0:
+        return test_ttest(post, assigned)
+    
+    # 最优 θ
+    theta = cov[0, 1] / cov[1, 1]
+    
+    # 方缩减
+    y_cuped = post - theta * (pre_covariate - pre_covariate.mean())
+    var_reduction = 1 - y_cuped.var() / post.var()
+    
+    return y_cuped, var_reduction
+```
+
+#### 实测对比（连续指标，5000 用户，效应 +5%）
+
+| 方法 | 检出力 | 方差缩减 |
+|---|---|---|
+| Ordinary t-test | 61% | 0% |
+| DID | 100% | **93.7%** |
+| **CUPED (单协变量)** | **100%** | **93.7%** ✓ |
+| DID + CUPED | 100% | 93.7% |
+
+#### 与 mock 数据的差异
+
+| 指标类型 | mock CUPED | 真实 CUPED | 差异 |
+|---|---|---|---|
+| 0/1 (fraud) | 50-80% | 0.1-1% | mock **过度乐观** |
+| **连续 (consumption)** | 50-80% | **93.7%** | 真实**接近上限** |
+
+#### 一句话结论
+
+**连续变量小样本下，CUPED 是核心方案**。方差缩减 50-93%（真实数据），等价比传统 t 检验多 10-20× 流量。
+
+### 11.3 综合决策树
+
+```
+Y 变量是 0/1 还是连续？
+│
+├─ 0/1（fraud, 付费, 转化）
+│   ├─ N ≥ 1万？
+│   │   ├─ 是 → 普通 t 检验（足够）
+│   │   └─ 否 → 小流量
+│   │           ├─ 业务接受贝叶斯 → Beta-Binomial
+│   │           ├─ 不能用贝叶斯 → 延长实验周期
+│   │           └─ 找业务层补偿 → 减少组数 (5→3)
+│
+└─ 连续（消费金额, 活跃度, CTR）
+    ├─ 有 pre 期数据？
+    │   ├─ 是 → **CUPED**（最佳）
+    │   └─ 否 → DID（用同期对照）
+    └─ 都没有 → 普通 t 检验 + 大样本
+```
+
+### 一句话总结
+
+**整个数据分析层的核心洞察**：
+
+1. **流量分配 = 算法**（Part I，分流均不均）
+2. **效果检出 = 方法**（Part II，灵敏度高不高）
+
+两者必须**配合优化**才能在小流量下做出可靠实验。
+
+### 实验脚本索引
+
+| 场景 | 脚本 | 关键指标 |
+|---|---|---|
+| 批量分流（充足流量）| 内置 SciPy | t 检验、z 检验 |
+| 实时分流（小流量）| `realtime_prebucket.py` | P1 用户池 0% 偏差 |
+| 小样本 + 0/1 事件 | `did_cuped_kaggle.py` | CUPED/DID + 真实 fraud |
+| 小样本 + 连续变量 | `did_cuped_consumption.py` | CUPED 方缩减 93.7% |
+| 全量 2000 用户验证 | `full_scale_validation.py` | 客群均值 + SRM |
+
+---
+
+## 附录 A：完整实践 checklist（工业级 AB 平台）
+
+### 启动期
+
+- [ ] 流量预估：N 用户数，分 N 组，每组 N/G ≥ 1537（5% 偏差）
+- [ ] 协变量规划：保留 7-14 天 pre 期数据（连续指标场景）
+- [ ] 客群分层：gender/age/income 三维交叉，确保各层分布均匀
+- [ ] SRM 监测脚本：每小时 chi² 检验
+
+### 实验期
+
+- [ ] 流量控制：P1 用户池预留（实时场景）
+- [ ] 数据采集：post 期每用户 Y 值 + 客群特征
+- [ ] 实时监控：
+  - SRM χ² p-value (期望 > 0.05)
+  - ANOVA p-value (期望 > 0.05)
+  - 客群偏差 (期望 < 10%)
+- [ ] 中间检查：1 周时看是否有显著性，估算必要实验周期
+
+### 收尾期
+
+- [ ] 方法选择：
+  - 连续指标 → **CUPED**（90%+ 方缩减）
+  - 0/1 高 base rate → **CUPED** 或 DID
+  - 0/1 低 base rate → **Beta-Binomial** 或加大样本
+- [ ] 多重比较校正：Bonferroni 或 BH FDR
+- [ ] 效果报告：95% CI + Cohen's d
+- [ ] 复盘记录：偏差 / 检出力 / 后续建议
+
+### 进阶
+
+- [ ] 累积实验 + 顺序检验（mSPRT）：动态判断显著性
+- [ ] 多层正交：跨团队流量复用
+- [ ] 长实验（30+ 天）：季节性 + 节假日校正
+
+---
+
+## 附录 B：相关参考论文
+
+| 方法 | 论文 | 关键贡献 |
+|---|---|---|
+| CUPED | Microsoft 2013, Deng et al. | Y_CUPED = Y - θ·(X - E[X])，方缩减 50%+ |
+| DID | Card & Krueger 1994 | 处理效应 = 实验组变化 - 对照组变化 |
+| Beta-Binomial | 经典 Bayesian AB | 二项分布的共轭先验 |
+| mSPRT | Walmart 2018 | 累积求和 + 序贯检验，Always-Valid p-value |
+
+---
+
+## 附录 C：跨章节实战路径
+
+```
+┌─────────────────────────────────────────┐
+│ 流量分配层 (Part I)                     │
+│ - 批量蛇形 / 用户池预留 P1              │
+│ - 多层正交 / 校准路由 C1                 │
+└─────────────────────────────────────────┘
+              ↓
+┌─────────────────────────────────────────┐
+│ 数据分析层 (Part II - 本文)              │
+│                                          │
+│ 大流量 → t 检验                          │
+│ 中流量 → CUPED                           │
+│ 小流量连续 → CUPED 强                  │
+│ 小流量 0/1 → DID + 贝叶斯                │
+└─────────────────────────────────────────┘
+              ↓
+┌─────────────────────────────────────────┐
+│ 业务监控层 (生产使用)                    │
+│ - SRM χ² + ANOVA 实时告警               │
+│ - 累计检验 mSPRT                        │
+│ - 业务指标多元对比                       │
+└─────────────────────────────────────────┘
+```
