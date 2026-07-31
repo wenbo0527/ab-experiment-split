@@ -162,6 +162,49 @@ N=100000 (10组): 实测 1.67% 平均偏差，10% < 1%
 
 > **实验脚本**：[realtime_breakthrough.py](realtime_breakthrough.py)、[bucket_count_analysis.py](bucket_count_analysis.py)、[sample_size_table.py](sample_size_table.py)、[bias_vs_traffic.py](bias_vs_traffic.py)
 
+### 真实数据验证：全量 2000 用户的均值偏差
+
+用 Kaggle transactions-fraud-datasets 全量数据（2000 用户 / 10 组 / 10 次试验）：
+
+**1) 流量分配偏差（最大组相对偏差）**
+
+| 算法 | 偏差 | SRM 通过 | 综合 |
+|---|---|---|---|
+| A) 纯 hash | **11.80%** | ✓ | △ 超标 |
+| **B) 蛇形分配** | **1.25%** | ✓ | ✓ 通过 |
+| **C) 用户池预留 P1** | **0.00%** | ✓ | ✓ 通过（最优）|
+| D) 校准路由 C1 | 0.60% | ✓ | ✓ 通过 |
+
+**2) 客群资质均值偏差（5 个特征：年龄/收入/信用分/总债务/信用卡数）**
+
+| 算法 | age | income | credit | debt | cards | 最差 |
+|---|---|---|---|---|---|---|
+| A 纯 hash | 4.5% | 6.6% | 1.2% | 12.5% | 6.2% | **12.5%** |
+| B 蛇形 | 5.5% | 5.9% | 1.2% | 9.7% | 8.6% | 9.7% |
+| **C 用户池 P1** | 4.5% | **4.0%** | 1.9% | 6.9% | 6.0% | **6.9%** |
+| D 校准 C1 | 4.6% | 6.4% | 1.1% | 9.2% | 6.5% | 9.2% |
+
+**关键工程发现**：
+
+1. **A) 纯 hash 在 N=2000 下偏差 11.8%**——不是 √n 数学下界，而是**真实用户 ID 分布 + hash 函数的具体结果**
+2. **C) 用户池 P1 客群均值最均衡**（最差 6.9%）—— 因为它按组轮转消耗槽位，无随机性
+3. **B) 蛇形在 N=2000 下表现也很出色**（1.25% 流量偏差）—— 优于纯 hash
+4. **所有客群均值都 < 10%**——这符合 2000 用户下的理论下界
+
+**工业级建议**：
+
+```
+推荐组合:
+  - P1 用户池预留（流量 0% 偏差）
+  - + 业务约束的客群均衡策略（基于 gender/age/income 分层）
+
+避免:
+  - 纯 hash（真实数据下偏差 > 10%）
+  - 单次随机抽样就完成（受 √n 限制）
+```
+
+> **实验脚本**：[full_scale_validation.py](full_scale_validation.py)
+
 ---
 
 ## 课题 3：实时分流有哪些优化手段？——5 种方案实测对比
@@ -617,6 +660,7 @@ class ProductionRouter:
 | [sample_size_table.py](sample_size_table.py) | 评估表生成器（95%置信度样本量需求） |
 | [did_cuped_analysis.py](did_cuped_analysis.py) | DID / CUPED 方差缩减分析（mock 数据）|
 | [did_cuped_kaggle.py](did_cuped_kaggle.py) | DID / CUPED 真实数据验证（Kaggle fraud 数据）|
+| [full_scale_validation.py](full_scale_validation.py) | 全量数据 + 客群资质均值偏差检验 |
 
 ### 快速运行
 
@@ -647,6 +691,7 @@ python sample_size_table.py         # 生成 EVALUATION_TABLE.md
 # 数据分析层（方差缩减）
 python did_cuped_analysis.py        # DID / CUPED 对比实验（mock 数据）
 python did_cuped_kaggle.py         # 真实 Kaggle 数据验证（需 kagglehub）
+python full_scale_validation.py     # 全量数据客群资质均值偏差验证
 ```
 
 ### 数据真实性
