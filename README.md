@@ -4,8 +4,57 @@
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/Version-v0.5.0-blue.svg)](CHANGELOG.md)
+[![Scripts](https://img.shields.io/badge/Scripts-20+-green.svg)](PROJECT_STRUCTURE.md)
 
 本项目记录了一个完整的工程问题研究过程：从实际工作中踩到的 AB 实验分坑出发，通过数学推导 + 实测验证 + 多种方案对比，最终给出可工业部署的方案。
+
+---
+
+## 📚 项目文档导航（按角色快速上手）
+
+| 我是谁 | 看哪 | 用途 |
+|---|---|---|
+| 🟢 **工程师**（先跑代码）| [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | 文件索引 + 一键复现命令 |
+| 📘 **算法学习者** | [README.md](README.md) （本文）| 13 个课题 + 三层结构 |
+| 🏗️ **架构师** | [ARCHITECTURE.md](ARCHITECTURE.md) | 模块边界 + 数据流图 |
+| 📋 **业务方 / PM** | [README.md#📋-业务视角详解](#) | 红绿灯判断法 |
+| 📚 **回顾历史** | [CHANGELOG.md](CHANGELOG.md) | 版本演进 |
+| 🧮 **找特定脚本** | [PROJECT_STRUCTURE.md#算法索引表](PROJECT_STRUCTURE.md#算法索引表按主题分类) | 算法分类索引 |
+
+---
+
+## 🚀 一键复现（30 秒看到效果）
+
+```bash
+# Step 1: 安装依赖（~30 秒）
+pip install mmh3 numpy scipy pandas
+
+# Step 2: 跑核心算法（无需 Kaggle 数据，~5 秒）
+python ab_split_validator.py        # 蛇形批量分配
+python realtime_prebucket.py        # P1 用户池 0% 偏差
+python experiment_validation_report.py  # 生成完整实验报告
+
+# Step 3: 跑数据驱动验证（首次自动下载 348MB Kaggle 数据，~3 分钟）
+python did_cuped_kaggle.py          # fraud 场景 CUPED
+python did_cuped_consumption.py     # 消费场景 CUPED 方缩减 93.7%
+python full_scale_validation.py     # 全量 2000 用户 + 客群资质
+```
+
+详细命令见 [PROJECT_STRUCTURE.md - 5 分钟上手](PROJECT_STRUCTURE.md#5-分钟上手quickstart)。
+
+---
+
+## 🎯 本项目亮点
+
+```
+✅ 真实数据验证        2000 用户 / 13M+ 笔交易（Kaggle 真实数据）
+✅ 工业级算法         P1 用户池 0% 流量偏差（实测）
+✅ 完整流水线         SRM + ANOVA + 显著性 + Markdown 报告
+✅ 业务友好           红绿灯判断法（业务方也能用）
+✅ 透明可复现         100% 脚本独立可跑，无黑盒
+✅ 跨学科专题         金融场景 30 天账期专题
+```
 
 ---
 
