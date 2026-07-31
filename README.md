@@ -466,7 +466,29 @@ def cuped_analysis(y_post, x_covariate, assigned):
 
 **MDE 不达标时，除了放大流量，还可以用 DID/CUPED 缩减方差**：CUPED 是工业级标配，可将 MDE 降低 50-80%（等价样本量提升 2-5×）。前提是**收集用户 7-14 天的 pre 期行为数据**。
 
-> **实验脚本**：[did_cuped_analysis.py](did_cuped_analysis.py)
+> **实验脚本**：[did_cuped_analysis.py](did_cuped_analysis.py)、[did_cuped_kaggle.py](did_cuped_kaggle.py)
+
+### 真实数据验证（Kaggle 信用卡欺诈数据）
+
+用 `kagglehub.dataset_download("computingvictor/transactions-fraud-datasets")`（2000 用户、13M+ 交易）做真实数据验证：
+
+| 方法 | 真实数据 Power (fraud) | 方差缩减 |
+|---|---|---|
+| 普通 t 检验 | 26% | 0% |
+| DID | 22% | 0% |
+| CUPED (单协变量 pre_fraud) | 28% | 0.1% |
+| **CUPED (多协变量)** | 24% | **1.0%** |
+| DID + CUPED (multi) | 24% | 1.1% |
+
+**真实数据下 CUPED 表现受限的诚实原因**：
+- Fraud 是 **0/1 伯努利事件**，pre/post 都是 0/1 协方差天然受限
+- 用户真实 fraud 概率仅在 ±2% 范围内浮动，cov 上限即此
+- 工业实践中 CUPED 在 fraud 场景下：
+  - 直接使用**普通 t 检验 + 大样本**（≥1万用户）
+  - 改用**贝叶斯混合模型**做小流量评估
+  - 或在 fraud 之外的 GMV、活跃度等**连续指标**上用 CUPED（这时方缩减能达 50%+）
+
+**这与 mock 数据结论的差异**：mock 数据（连续伯努利 0/1 但更规则）下 CUPED 略胜，但都受 0/1 协方差限制。**真实数据揭示了一个工程真相**：CUPED 不是万能的，**指标类型决定上限**。
 
 > **实验脚本**：[ab_split_validator.py](ab_split_validator.py) 的 `calc_mde` 函数
 
@@ -593,7 +615,8 @@ class ProductionRouter:
 |---|---|
 | [monte_carlo_100.py](monte_carlo_100.py) | 100 次重复抽样稳定性测试 |
 | [sample_size_table.py](sample_size_table.py) | 评估表生成器（95%置信度样本量需求） |
-| [did_cuped_analysis.py](did_cuped_analysis.py) | DID / CUPED 方差缩减分析 |
+| [did_cuped_analysis.py](did_cuped_analysis.py) | DID / CUPED 方差缩减分析（mock 数据）|
+| [did_cuped_kaggle.py](did_cuped_kaggle.py) | DID / CUPED 真实数据验证（Kaggle fraud 数据）|
 
 ### 快速运行
 
@@ -622,7 +645,8 @@ python bias_vs_traffic.py           # 实测偏差 vs 流量规模
 python sample_size_table.py         # 生成 EVALUATION_TABLE.md
 
 # 数据分析层（方差缩减）
-python did_cuped_analysis.py        # DID / CUPED 对比实验
+python did_cuped_analysis.py        # DID / CUPED 对比实验（mock 数据）
+python did_cuped_kaggle.py         # 真实 Kaggle 数据验证（需 kagglehub）
 ```
 
 ### 数据真实性
