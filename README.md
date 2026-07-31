@@ -31,6 +31,19 @@
   - [11.2 连续变量](#112-连续变量小样本下的工程实践)
   - [11.3 综合决策树](#113-综合决策树)
 
+**Part III: 实验检验与报告（2 个课题）**
+
+- [课题 12：实验数据检验](#课题-12实验数据检验)
+  - [12.1 实验前检验](#121-实验前检验启动期)
+  - [12.2 实验中检验](#122-实验中检验持续验证)
+  - [12.3 实验后检验](#123-实验后检验最终评估)
+- [课题 13：分析报告产出](#课题-13分析报告产出)
+  - [13.1 报告结构](#131-报告结构5-段式)
+  - [13.2 12 项核心指标](#132-12-项核心指标必含)
+  - [13.3 报告模板](#133-报告模板markdown-输出示例)
+  - [13.4 自动建议逻辑](#134-自动业务建议逻辑)
+  - [13.5 实战 demo](#135-实战-demo-演示)
+
 **附录**
 
 - [附录 A：工业级 AB 平台 checklist](#附录-a完整实践-checklist工业级-ab-平台)
@@ -678,6 +691,7 @@ class ProductionRouter:
 | [did_cuped_kaggle.py](did_cuped_kaggle.py) | DID / CUPED 真实数据验证（Kaggle fraud 数据）|
 | [did_cuped_consumption.py](did_cuped_consumption.py) | DID / CUPED 在消费指标上的表现 |
 | [full_scale_validation.py](full_scale_validation.py) | 全量数据 + 客群资质均值偏差检验 |
+| [experiment_validation_report.py](experiment_validation_report.py) | 实验检验 + 持续验证 + 报告产出（Part III） |
 
 ### 快速运行
 
@@ -710,6 +724,7 @@ python did_cuped_analysis.py        # DID / CUPED 对比实验（mock 数据）
 python did_cuped_kaggle.py         # 真实 Kaggle 数据验证（fraud，需 kagglehub）
 python did_cuped_consumption.py     # 真实 Kaggle 数据验证（consumption）
 python full_scale_validation.py     # 全量数据客群资质均值偏差验证
+python experiment_validation_report.py # 实验检验 + 报告 demo（Part III）
 ```
 
 ### 数据真实性
@@ -1262,18 +1277,346 @@ Y 变量是 0/1 还是连续？
 └─────────────────────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 数据分析层 (Part II - 本文)              │
-│                                          │
-│ 大流量 → t 检验                          │
-│ 中流量 → CUPED                           │
-│ 小流量连续 → CUPED 强                  │
-│ 小流量 0/1 → DID + 贝叶斯                │
+│ 数据分析层 (Part II)                    │
+│ - 大流量 → t 检验                       │
+│ - 中流量 → CUPED                        │
+│ - 小流量 0/1 → DID + 贝叶斯              │
+│ - 小流量连续 → CUPED 强               │
 └─────────────────────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 业务监控层 (生产使用)                    │
-│ - SRM χ² + ANOVA 实时告警               │
-│ - 累计检验 mSPRT                        │
-│ - 业务指标多元对比                       │
+│ 实验检验与报告 (Part III - 本文后续)       │
+│ - SRM + ANOVA + 显著性检验               │
+│ - 持续验证 + 稳定性评估                  │
+│ - Markdown 报告 + 12 项核心指标          │
 └─────────────────────────────────────────┘
 ```
+
+---
+
+# Part III：实验检验与报告（三大能力）
+
+> Part I 解决了"流量怎么分"，Part II 解决了"怎么检出效果"。
+> Part III 解决"**怎么知道实验做得对不对**，以及**怎么把结果汇报给业务**"。
+
+## 整体架构
+
+```
+数据采集 → 三阶段检验 → 持续验证 → 报告产出
+   ↓          ↓            ↓         ↓
+原始数据   SRM/ANOVA   mSPRT     Markdown
+            显著性    稳定性     12指标
+```
+
+---
+
+## 课题 12：实验数据检验
+
+### 12.1 实验前检验（启动期）
+
+#### A) 流量分配健康度：SRM 检验
+
+```python
+from experiment_validation_report import check_sample_ratio_mismatch
+
+srm = check_sample_ratio_mismatch(
+    group_sizes=[1250, 1280, 1235, 1245],
+    expected_sizes=[1255]*4,  # 期望人数
+)
+# srm.passed = True/False（健康？）
+# srm.p_value < 0.05 → SRM，停止实验
+```
+
+**SRM 告警阈值**：
+- p < 0.001 → **critical**，立即停止实验
+- p < 0.01 → **high**，审查最近变更
+- p < 0.05 → **medium**，持续监控
+- p ≥ 0.05 → **normal**
+
+#### B) 客群资质平衡：ANOVA 检验
+
+```python
+from experiment_validation_report import check_coupon_balance
+
+coupon = check_coupon_balance(
+    df,  # 用户级数据
+    group_col="assigned",
+    features=["age", "yearly_income", "credit_score", "total_debt"],
+)
+# 每个特征返回 F 统计量、p-value、最大组偏差
+```
+
+**客群警示规则**：
+- 单特征 p < 0.01 → 该特征组间不平
+- 最大组偏差 > 10% → **告警**（不管 ANOVA 结论）
+
+#### C) 显著性检验
+
+```python
+from experiment_validation_report import (
+    test_conversion_difference,
+    test_continuous_difference,
+)
+
+# 0/1 事件
+result = test_conversion_difference(
+    n_treat=1500, x_treat=180,  # 实验组 180/1500 = 12%
+    n_ctrl=1500, x_ctrl=145,     # 对照组 145/1500 = 9.7%
+)
+
+# 连续变量
+treat_values = [...]  # 每用户 GMV
+ctrl_values = [...]
+result = test_continuous_difference(treat_values, ctrl_values)
+```
+
+**输出包含**：效应估计、置信区间、效应量（Cohen's d/h）。
+
+#### D) 多重比较校正
+
+```python
+from experiment_validation_report import apply_bh_fdr_correction
+
+# 5 个次要指标
+p_values = [0.02, 0.04, 0.03, 0.05, 0.001]
+adjusted = apply_bh_fdr_correction(p_values)
+# 返回 FDR 校正后的 p-values（控制假发现比例）
+```
+
+### 12.2 实验中检验（持续验证）
+
+#### A) SRM 实时监控
+
+```python
+from experiment_validation_report import srm_monitoring
+
+# 每小时调用一次
+result = srm_monitoring(
+    cumulative_sizes=[1250, 1280, 1235, 1245],
+    expected_per_group=1255,
+)
+if result["level"] == "critical":
+    # 立即停止实验
+    stop_experiment(...)
+```
+
+#### B) 顺序检验 mSPRT
+
+**问题**：实验过程中，PM 总来问"现在显著了吗？"
+每次做 t 检验都会膨胀 I 型错误。
+
+**解决方案**：mSPRT（Always-Valid p-value）保证无论何时观察，I 型错误总和 ≤ α。
+
+```python
+from experiment_validation_report import sequential_msprt_test
+
+# 实验进行到第 N 个用户
+test = sequential_msprt_test(
+    obs_t=treat_obs_so_far,
+    obs_c=ctrl_obs_so_far,
+    alpha=0.05,
+)
+# test.msprt_significant = True（任何观察点都有效）
+```
+
+#### C) 累积效果稳定性追踪
+
+```python
+from experiment_validation_report import cumulative_effect_tracking
+
+stab = cumulative_effect_tracking(
+    obs_t_cum=treat_cum_rate_series,  # 滚动转化率
+    obs_c_cum=ctrl_cum_rate_series,
+)
+# stab.stability_score (>0.6 稳定)
+# stab.trend_direction (up/down/stable)
+```
+
+**稳定性评分解读**：
+- > 0.8：效果非常稳定
+- 0.6-0.8：稳定
+- 0.4-0.6：需要观察
+- < 0.4：效果震荡，建议延长实验
+
+### 12.3 实验后检验（最终评估）
+
+| 检验类型 | 工具 | 通过标准 |
+|---|---|---|
+| 流量分配 (SRM) | χ² | p > 0.05 |
+| 客群资质 | ANOVA + 偏差 | p > 0.05 且最大组偏差 < 10% |
+| 主指标显著性 | t / z 检验 | p < 0.05 |
+| 多重比较 | BH FDR | q < 0.05 |
+| 效果稳定性 | 累积曲线评分 | score > 0.6 |
+| 次要指标 | t 检验 + FDR | 校正后 p < 0.05 |
+
+---
+
+## 课题 13：分析报告产出
+
+### 13.1 报告结构（5 段式）
+
+```
+1. 实验基本信息
+   - 实验 ID、名称、起止时间、报告时间
+
+2. 实验健康度检查
+   - 2.1 流量分配（SRM）
+   - 2.2 客群资质（ANOVA）
+
+3. 主指标检验
+   - 转化率或连续变量
+   - 含 P-value、置信区间、effect size
+
+4. 次要指标检验
+   - 多指标表格（含 FDR 校正）
+
+5. 效果稳定性与总结论
+   - 累积曲线、早期 vs 末期、稳定性评分
+   - 业务建议（全量上线 / 延长 / 终止 / 停止）
+```
+
+### 13.2 12 项核心指标（必含）
+
+| # | 指标 | 类型 | 阈值 |
+|---|---|---|---|
+| 1 | 实验组样本量 | int | ≥ 1000 |
+| 2 | 对照组样本量 | int | ≥ 1000 |
+| 3 | 实验周期 (天) | int | ≥ 7 |
+| 4 | 主指标 p-value | float | < 0.05 |
+| 5 | 主指标效应 | float | 业务预期 |
+| 6 | 95% 置信区间 | str | 不含 0 |
+| 7 | Cohen's d (effect size) | float | \|d\| > 0.2 |
+| 8 | SRM p-value | float | > 0.05 |
+| 9 | 客群最大偏差 % | float | < 10% |
+| 10 | 效果稳定性评分 | float | > 0.6 |
+| 11 | 最小可检测效果 MDE | float | < 业务预期 |
+| 12 | 周收益预估 | float | ≥ 0 |
+
+### 13.3 报告模板（Markdown 输出示例）
+
+完整生成的报告样例（约 200 行 Markdown）：
+
+```python
+from experiment_validation_report import validate_full_pipeline
+
+report = validate_full_pipeline(
+    df=user_data,                # 用户级数据
+    group_col="assigned",        # 实验分组列
+    y_col="converted",           # 主指标列
+    feature_cols=["age", "yearly_income", "credit_score"],  # 客群特征
+    experiment_id="EXP_20240115_001",
+    experiment_name="首页改版效果验证",
+    y_type="binary",
+)
+print(report)  # Markdown 字符串
+```
+
+**报告的关键部分**：
+
+```markdown
+| 维度 | 状态 |
+|---|---|
+| 流量分配 | ✓ 健康 |
+| 客群资质 | ✓ 全部通过 |
+| 显著性 | ✓ 显著 |
+| 效果稳定性 | ✓ 稳定 |
+
+✅ **建议全量上线**
+- 流量分配健康
+- 主指标显著提升
+- 客群资质平衡
+- 效果稳定
+→ 可以推进全量发布。
+```
+
+### 13.4 自动业务建议逻辑
+
+```python
+def auto_business_recommendation(srm_passed, significant, stability_score, effect, mde):
+    if not srm_passed:
+        return "❌ 立即停实验"  # SRM 一切不可信
+    
+    if significant and stability_score > 0.6:
+        return "✅ 全量上线"
+    
+    if not significant:
+        if effect > mde * 0.5:
+            return "⚠ 延长实验 1-2 周"
+        return "❌ 终止实验，重设计"
+    
+    if stability_score < 0.4:
+        return "⚠ 效果震荡，延长观察"
+    
+    return "△ 谨慎评估"
+```
+
+### 13.5 实战 demo 演示
+
+```bash
+# 跑 demo 看真实报告
+python experiment_validation_report.py
+
+# 集成到生产 AB 平台
+from experiment_validation_report import validate_full_pipeline
+
+def on_experiment_end(experiment_id):
+    df = load_user_data(experiment_id)
+    report = validate_full_pipeline(df, ...)
+    save_to_database(experiment_id, report)
+    send_to_dashboard(experiment_id)
+    return report
+```
+
+---
+
+## Part II ↔ Part III 协同
+
+```
+Part II 解决了：
+  ✓ 选择分析方法（CUPED? DID? Beta-Binomial?）
+  ✓ 拿到一个 p-value 和 effect_size
+
+Part III 解决了：
+  ✓ 怎么验证实验做得对 (SRM, ANOVA)
+  ✓ 怎么持续监控 (mSPRT, 稳定性)
+  ✓ 怎么汇报 (12 指标, Markdown)
+  ✓ 怎么决策 (自动建议)
+```
+
+**完整流水线**：
+
+```
+实验启动 (Part I) 
+  → 数据采集 (Part II)
+  → 持续验证 (Part III Part B) 每小时跑
+  → 最终汇报 (Part III Part C) 实验结束时跑
+  → 业务决策 (上线/重设计)
+```
+
+---
+
+## 一句话总结
+
+> **完整的 AB 实验平台 = 流量分配（Part I）+ 效果检出（Part II）+ 检验报告（Part III）**。
+> 
+> 这一章（Part III）是工业级 AB 平台的"质量监控与决策输出"核心模块，
+> 没有它就只是"开了实验数据看"，无法形成闭环。
+
+---
+
+## Part III 主要文件
+
+| 文件 | 关键能力 |
+|---|---|
+| `experiment_validation_report.py` | 实验检验 + 持续验证 + 报告产出（三大能力合并实现） |
+
+**核心 API**：
+- `check_sample_ratio_mismatch` → SRM 检验
+- `check_coupon_balance` → 客群 ANOVA 检验
+- `test_conversion_difference` → 转化率显著性
+- `test_continuous_difference` → 连续变量显著性
+- `srm_monitoring` → 持续 SRM 监控
+- `sequential_msprt_test` → 顺序检验 mSPRT
+- `cumulative_effect_tracking` → 稳定性追踪
+- `produce_experiment_report` → Markdown 报告
+- `validate_full_pipeline` → 完整流水线（一次调用生成报告）
