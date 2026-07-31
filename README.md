@@ -660,6 +660,7 @@ class ProductionRouter:
 | [sample_size_table.py](sample_size_table.py) | 评估表生成器（95%置信度样本量需求） |
 | [did_cuped_analysis.py](did_cuped_analysis.py) | DID / CUPED 方差缩减分析（mock 数据）|
 | [did_cuped_kaggle.py](did_cuped_kaggle.py) | DID / CUPED 真实数据验证（Kaggle fraud 数据）|
+| [did_cuped_consumption.py](did_cuped_consumption.py) | DID / CUPED 在消费指标上的表现 |
 | [full_scale_validation.py](full_scale_validation.py) | 全量数据 + 客群资质均值偏差检验 |
 
 ### 快速运行
@@ -690,7 +691,8 @@ python sample_size_table.py         # 生成 EVALUATION_TABLE.md
 
 # 数据分析层（方差缩减）
 python did_cuped_analysis.py        # DID / CUPED 对比实验（mock 数据）
-python did_cuped_kaggle.py         # 真实 Kaggle 数据验证（需 kagglehub）
+python did_cuped_kaggle.py         # 真实 Kaggle 数据验证（fraud，需 kagglehub）
+python did_cuped_consumption.py     # 真实 Kaggle 数据验证（consumption）
 python full_scale_validation.py     # 全量数据客群资质均值偏差验证
 ```
 
@@ -716,6 +718,46 @@ python full_scale_validation.py     # 全量数据客群资质均值偏差验证
 ## Mock vs 真实数据：哪些结论被颠覆？
 
 > 这是最重要的一节。**我们必须诚实地面对**：mock 数据的强相关假设掩盖了一些实际问题。
+
+### 0. 指标类型决定 CUPED 上限 ⭐ 颠覆
+
+**用 Kaggle 信用卡数据对比 fraud（0/1）和 consumption（连续）两种指标上的 CUPED**：
+
+| 指标类型 | 方差缩减 | 工程意义 |
+|---|---|---|
+| **0/1 事件**（fraud/付费/注册）| **0.1-1%** | ❌ CUPED 价值有限 |
+| **连续指标**（消费金额/活跃度/点击数）| **50-93%** | ✅ CUPED 是工业标配 |
+
+**实测数据**（Kaggle 信用卡数据，2000 用户，13M+ 笔交易）：
+
+```
+Fraud 场景（did_cuped_kaggle.py）：
+  CUPED 单协变量: 方缩减 0.1%, 检出力 28% (+2pp vs t-test)
+  
+Consumption 场景（did_cuped_consumption.py）：
+  CUPED pre_avg:  方缩减 93.7%, 检出力 100% (+39pp vs t-test)
+```
+
+**这是关键的工程认知**：
+
+- mock 数据中两个场景表现都还可以（CUPED 都胜一筹）
+- 真实数据揭示：**指标类型决定 CUPED 上限**
+- 在 fraud 上投入 CUPED 价值低，应改用**贝叶斯/测试-控制序列**
+- 在 consumption 上 CUPED 价值巨大，应**作为默认手段**
+
+**CUPED 的指标适配矩阵**：
+
+| 指标 | 推荐方法 |
+|---|---|
+| GMV（消费金额）| ✅ **CUPED**（方缩减 90%+）|
+| 活跃天数 | ✅ **CUPED**（方缩减 70%+）|
+| CTR（点击率）| ✅ **CUPED**（方缩减 50%+）|
+| 留存指标 | ⚠️ **CUPED 或 DID**（取决于周期）|
+| Fraud（欺诈检出）| ❌ 改用**贝叶斯混合模型**|
+| 注册付费（低 base rate）| ❌ 改用**大样本 t 检验 + 时间序列对比**|
+| 0/1 转化（高 base rate）| ⚠️ **CUPED**（略有效）|
+
+**结论**：**CUPED 不是万能方剂，按指标类型选方法**。数据科学家最容易踩的坑：把 CUPED 套到所有指标上。
 
 ### 1. CUPED 方差缩减：从"50-80%"到"0.1-1%" ⭐ 主要颠覆
 
