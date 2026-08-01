@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "abexp"
+version = "0.5.0"
+description = "AB 实验分流算法与数据分析：从踩坑到工业级方案的完整实现"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "AbExp Contributors"},
+]
+keywords = [
+    "ab-testing",
+    "experiment",
+    "split-traffic",
+    "cuped",
+    "did",
+    "did-cuped",
+    "hash-bucketing",
+    "snake-assignment",
+    "srm",
+    "bayesian",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "mmh3>=4.0",
+    "numpy>=1.20",
+    "scipy>=1.7",
+    "pandas>=1.3",
+    "kagglehub>=0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "matplotlib>=3.5",
+]
+all = [
+    "matplotlib>=3.5",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/yourname/abexp"
+"Documentation" = "https://github.com/yourname/abexp/tree/main/docs"
+"Source" = "https://github.com/yourname/abexp"
+"Bug Tracker" = "https://github.com/yourname/abexp/issues"
+
+[tool.setuptools]
+packages = [
+    "abexp",
+    "abexp.routing",
+    "abexp.analysis",
+    "abexp.validation",
+    "abexp.advanced",
+    "abexp.tools",
+]
+
+[tool.setuptools.package-data]
+abexp = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

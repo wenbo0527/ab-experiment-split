@@ -41,3 +41,16 @@ coverage.xml
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Kaggle cache (348MB public dataset)
+kagglehub_cache/
+
+# Build artifacts
+_legacy_cache/
+.abexp_runtime/
+
+# Test outputs
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
