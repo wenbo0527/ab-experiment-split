@@ -35,7 +35,10 @@ python ab_split_validator.py        # 蛇形批量分配
 python realtime_prebucket.py        # P1 用户池 0% 偏差
 python experiment_validation_report.py  # 生成完整实验报告
 
-# Step 3: 跑数据驱动验证（首次自动下载 348MB Kaggle 数据，~3 分钟）
+# Step 3: 生成测试数据子集（无需下载 348MB，< 1 秒）
+python generate_test_data.py        # 生成 test_data/ 9 个样本文件
+
+# Step 4: 跑数据驱动验证（首次自动下载 348MB Kaggle 数据，~3 分钟）
 python did_cuped_kaggle.py          # fraud 场景 CUPED
 python did_cuped_consumption.py     # 消费场景 CUPED 方缩减 93.7%
 python full_scale_validation.py     # 全量 2000 用户 + 客群资质

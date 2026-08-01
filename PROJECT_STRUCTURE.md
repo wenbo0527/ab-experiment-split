@@ -29,7 +29,11 @@ python ab_split_validator.py        # 蛇形批量分配
 python realtime_prebucket.py        # P1 用户池预留
 python experiment_validation_report.py  # 实验报告生成
 
-# 3. 跑数据驱动验证（需要 Kaggle 真实数据，首次自动下载 348MB）
+# 3. 生成测试数据子集（< 1 秒，9 个文件 ~280KB）
+python generate_test_data.py
+cat test_data/README.md             # 查看测试数据说明
+
+# 4. 跑数据驱动验证（需要 Kaggle 真实数据，首次自动下载 348MB）
 python did_cuped_kaggle.py          # fraud 场景 CUPED
 python did_cuped_consumption.py     # consumption 场景 CUPED
 python full_scale_validation.py     # 全量 2000 用户 + 客群资质
@@ -92,6 +96,25 @@ python full_scale_validation.py     # 全量 2000 用户 + 客群资质
 | `monte_carlo_100.py` | 100 次重复抽样稳定性 | 课题 1 |
 | `bias_vs_traffic.py` | 流量-偏差联合实测 | 课题 2 |
 | `sample_size_table.py` | 评估表生成器 | 课题 7 |
+| `generate_test_data.py` | 生成测试数据样本（无需下载 348MB） | 通用 |
+
+### F 测试数据 `test_data/` 目录
+
+| 文件 | 内容 | 大小 |
+|---|---|---|
+| `README.md` | 测试数据说明 | 4KB |
+| `sample_users.csv` | 100 用户级数据 | 2.7KB |
+| `sample_transactions.csv` | 2000 笔交易样本 | 184KB |
+| `sample_user_history.csv` | 用户消费聚合（CUPED 用） | 5.5KB |
+| `sample_split_output.csv` | 5000 用户的 4 种算法分组 | 83KB |
+| `reports/experiment_validation_report.md` | 示例完整实验报告 | 1.9KB |
+| `reports/cuped_results.csv` | CUPED fraud vs consumption 对比 | 0.2KB |
+| `reports/mab_vs_ab_results.csv` | MAB vs AB 算法对比 | 0.1KB |
+| `reports/sr_check.csv` | SR 校验样本 | 0.2KB |
+
+**总大小**：约 280 KB（任何 GitHub 网络瞬间 clone）
+
+详情见 [test_data/README.md](test_data/README.md)
 
 ---
 

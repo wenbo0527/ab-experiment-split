@@ -1,0 +1,7 @@
+scenario,method,power,variance_reduction
+fraud,t_test,26.0,0.0
+fraud,DID,22.0,0.0
+fraud,CUPED_multi,24.0,1.1
+consumption,t_test,61.0,0.0
+consumption,DID,100.0,93.7
+consumption,CUPED_pre,100.0,93.7

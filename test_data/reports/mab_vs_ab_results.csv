@@ -1,0 +1,5 @@
+algorithm,total_reward,total_regret
+AB 50/50,432.5,89.5
+ε-Greedy (0.1),738.2,23.7
+UCB1 (c=1),762.1,12.4
+Thompson Sampling,779.8,8.2
